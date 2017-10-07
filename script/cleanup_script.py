@@ -4,23 +4,15 @@ import csv
 
 NoneString=""
 
-#load document...TODO: name of document and path to the document
-workbook = openpyxl.load_workbook('TransactionListingSale30.xlsx')
-
-#the sheets in the workbook
-sheets = workbook.get_sheet_names()
-
-#how many sheets the document has
-nsheets = len(sheets)
-
-
+#map for the months
 months={'01':'Jan','02':'Feb','03':'Mar',
         '04':'Apr','05':'May','06':'June',
         '07':'July','08':'Aug','09':'Sept',
         '10':'Oct','11':'Nov','12':'Dec'}
 
-#print the sheet names
-print("Workbook sheets: ",workbook.get_sheet_names())
+#map for the error codes with explanation
+error_map={"01":"Missing Reference In Marks Column",
+           "02":"Missing Datum Colum"}
 
 #the columns of a row that we are interested in
 #These correspond to excel sheet column letters
@@ -33,10 +25,6 @@ print("Workbook sheets: ",workbook.get_sheet_names())
 #M=AUTCODE,         N=Status,       O=Datum,        P=TijD
 
 interestCols='ABCDEFGHIJKLMNO'
-
-#get the sheet. Assume that the workbook has
-#only one sheet? Validate?
-sheet = workbook.get_sheet_by_name(sheets[0])
 
 def correct_mark_format(cell_value):
 
@@ -51,9 +39,10 @@ def correct_mark_format(cell_value):
 	separate_list = marks2.split('/')
 
 	#no factory number and I don't
-	#know what to do
+	#know what to do. I am simply returning
+  #the error code
 	if len(separate_list) <= 2:
-		return [cell_value,marks2]
+		return "01"
 
 	#get the factory number
 	factory_num = separate_list[2]
@@ -79,9 +68,8 @@ def process_datum(cell_value):
     Proceccess the Datum column to produce an ISODate
     and Season
     """
-
     if cell_value==None:
-		    return NoneString
+		    return "02"
 
     value = str(cell_value.value.date())
     value_list = value.split('-')
@@ -90,66 +78,158 @@ def process_datum(cell_value):
     day = value_list[2]
     yearint = int(year)
     yearprev = yearint-1
-    #print(" %s %s %s "%(day,month,year))
-    #print(type(cell_value.value))
 
     return (str(day)+'-'+months[str(month)]+'-'+str(year),str(yearprev)+'-'+str(year))
- 
-#we will output the needed data into a CVS file
-#which will be our clean file to upload to DB
-outputname = 'output.csv'
-csv_file = open(outputname,'wt')
 
-#try to write data into the CSV file
-try:
-    csvwriter = csv.writer(csv_file,lineterminator='\n')
+def correct_output_csv_file(csv_file_name):
+    """
+    Sets the name of the output CSV file
+    """
+    if csv_file_name =="" or csv_file_name==None:
+        now = datetime.datetime.now()
+        csv_file_name = 'output-'+str(now)+'.csv'
+        csv_file_name = csv_file_name.replace(":","-")
 
-    #write header with column info
-    #csvwriter.writerow(('#TRANSNR','LOTNT','MARKS', 'MARKS2','REF','REF2', 'BAGMARK','GRADE-GR',
-    #                    'BAGSNR','WEIGHT-Kgr','SALENO','BAGSBOUGHTNR','WEIGHTBOUGHT-Kgr',
-    #                    'BUYERCODE','PRICE','SEATNR','AUCTCODE','STATUS','ISODATE', 'SEASON', 'TIJD','VALUE'))
+    #replace any blanks
+    csv_file_name = csv_file_name.replace(" ","_")
+    return csv_file_name
 
-    csvwriter.writerow(('#TRANSNR','LOTNT','MARKS', 'MARKS2','REF','REF2', 'BAGMARK','GRADE-GR',
-                        'BAGSNR','WEIGHT-Kgr','SALENO','BAGSBOUGHTNR','WEIGHTBOUGHT-Kgr',
-                        'BUYERCODE','PRICE','SEATNR','AUCTCODE','STATUS','ISODATE', 'SEASON','VALUE'))
 
-    for row in range(2,sheet.max_row):
-        row_vals=[]
-        weightBought=0.0
-        price = 0.0
-        for col in interestCols:
-            cell = "{}{}".format(col,row)
+def write_error_output(filename,errors):
+    """
+    Write a file describing the row errors found
+    """
+    try:
+        csv_file = open(filename,'wt')
+        csvwriter = csv.writer(csv_file,lineterminator='\n')
 
-            if col == 'C': #this is the marks column
-                cell_value = correct_mark_format(sheet[cell].value)
-                for val in cell_value:
-                    row_vals.append(val)
-            elif col=='O':
-                values = process_datum(sheet[cell])
-                for val in values:
-                    row_vals.append(val)
-                #row_vals.append(val)
-            elif col=='I':
+        for error in errors:
+            csvwriter.writerow(error)
+    finally:
+        csv_file.close()
 
-                #cache the weight bought for value calculation
-                weightBought = float(sheet[cell].value)
-                row_vals.append(sheet[cell].value)
-            elif col=='K':
-                #cache the price for value calculation
-                price = float(sheet[cell].value)
-                row_vals.append(sheet[cell].value)
-            else:
-                row_vals.append(sheet[cell].value)
 
-        #we processed the sheet let's calculate the value
-        value = (weightBought/50.)*price
-        row_vals.append(value)
+def cleanup(excel_in_filename,csv_out_filename):
+    """
+    Main function to call for cleanup
+    """
+    try:
+        #the excel doc to work om
+        workbook = openpyxl.load_workbook(excel_in_filename)
 
-        #make a tuple from the list values
-        row_vals = tuple(row_vals)
+        csv_file = open(csv_out_filename,'wt')
 
-			  #let's write the row in the specified
-        csvwriter.writerow(row_vals)
-finally:
-    csv_file.close()
+        #the csv writer to write into
+        csvwriter = csv.writer(csv_file,lineterminator='\n')
+
+        #the sheet name in the workbook
+        sheets = workbook.get_sheet_names()
+
+        #how many sheets the document has
+        nsheets = len(sheets)
+
+        #safe guard in the case no sheets exist
+        if nsheets == 0:
+            csvwriter.writerow(("No sheets found in "+excel_in_filename,))
+            return
+
+        #by default we only process the zero sheet
+        #perhaps we can change this; add some color in the future
+        if nsheets > 1:
+            print("===================================================================")
+            print("WARNING: More than one sheets found. Processing only the first one.")
+            print("===================================================================")
+
+        #get the sheet. Assume that the workbook has
+        #only one sheet? Validate?
+        sheet = workbook.get_sheet_by_name(sheets[0])
+
+        csvwriter.writerow(('#TRANSNR','LOTNT','MARKS', 'MARKS2','REF','REF2', 'BAGMARK','GRADE-GR',
+                            'BAGSNR','WEIGHT-Kgr','SALENO','BAGSBOUGHTNR','WEIGHTBOUGHT-Kgr',
+                            'BUYERCODE','PRICE','SEATNR','AUCTCODE','STATUS','ISODATE', 'SEASON','VALUE'))
+
+        #array holding the failed rows
+        failed_rows=[]
+
+        for row in range(2,sheet.max_row):
+            row_vals=[]
+            weightBought=0.0
+            price = 0.0
+            for col in interestCols:
+                cell = "{}{}".format(col,row)
+
+                if col == 'C': #this is the marks column
+                    cell_value = correct_mark_format(sheet[cell].value)
+                    if cell_value == "01":
+                        failed_rows.append((row,error_map["01"]))
+                    else:
+                        for val in cell_value:
+                            row_vals.append(val)
+                elif col=='O':
+                    values = process_datum(sheet[cell])
+                    if values == "02":
+                        failed_rows.append((row,error_map["02"]))
+                    else:
+                        for val in values:
+                            row_vals.append(val)
+
+                elif col=='I':
+
+                    #cache the weight bought for value calculation
+                    weightBought = float(sheet[cell].value)
+                    row_vals.append(sheet[cell].value)
+                elif col=='K':
+                    #cache the price for value calculation
+                    price = float(sheet[cell].value)
+                    row_vals.append(sheet[cell].value)
+                else:
+                    row_vals.append(sheet[cell].value)
+
+            #we processed the sheet let's calculate the value
+            value = (weightBought/50.)*price
+            row_vals.append(value)
+
+            #make a tuple from the list values
+            row_vals = tuple(row_vals)
+
+            #let's write the row in the specified
+            csvwriter.writerow(row_vals)
+        return failed_rows
+    except FileNotFoundError:
+        print("File "+excel_in_filename+" does not exist")
+    finally:
+        csv_file.close()
+
+
+if __name__ == '__main__':
+    print("=======================================================================")
+    print("\tStart Processing")
+    print("=======================================================================")
+    excel_doc = input("\tName of excel document or path to the document: ")
+
+    #make sure that something is given
+    if excel_doc == "":
+        raise ResourceWarning("\tEntered empty excel file name for processing. Exiting")
+
+    print("\tExcel file given %s"%excel_doc)
+
+    #the name of the output of the CSV file
+    csv_file_name = input("\tEnter CSV file name. Default is ouput-yyyy-mm-dd_hh-mm-ss.csv. Leave blank if default is ok: ")
+    csv_file_name = correct_output_csv_file(csv_file_name)
+    print("\tSaving at file: ",csv_file_name)
+
+    #clean up the given excel and output to csv
+    failed_rows = cleanup(excel_doc,csv_file_name)
+    print("====================ERROR REPORT=====================================")
+    if not failed_rows:
+        print("\tNo failed rows detected")
+
+    else:
+        print("\tFailed rows occured. Number of failed rows: %d "%len(failed_rows))
+        errfilename = 'error-'+csv_file_name
+        print("\tOutputing error file at %s "%errfilename)
+        write_error_output(errfilename,failed_rows)
+    print("=======================================================================")
+    print("\tEnd Processing")
+    print("=======================================================================")
 	
