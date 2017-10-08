@@ -1,5 +1,6 @@
 import openpyxl
 import datetime
+import os
 import csv
 
 NoneString=""
@@ -11,8 +12,43 @@ months={'01':'Jan','02':'Feb','03':'Mar',
         '10':'Oct','11':'Nov','12':'Dec'}
 
 #map for the error codes with explanation
-error_map={"01":"Missing Reference In Marks Column",
-           "02":"Missing Datum Colum"}
+error_map={"01":"Missing TRANSANR column value",
+           "02":"Missing LOTNR column value",
+           "03":"Missing MARKS column value",
+           "031":"Missing Reference In Marks Column",
+           "04":"Missing GRADE column value",
+           "05":"Missing BAGS column value",
+           "06":"Missing WEIGHT column value",
+           "07":"Missing SALENO column value",
+           "08":"Missing BAGSBOUGHT column value",
+           "09":"Missing WGTBOUGHT column value",
+           "10":"Missing BUYERCODE column value",
+           "11":"Missing PRICE column value",
+           "12":"Missing SEATNR column value",
+           "13":"Missing AUCTCODE column value",
+           "14":"Missing STATUS column value",
+           "15":"Missing DATUM column value",
+           "16":"Missing TIJD column value",
+           "17":"Couldn't write value column price or weightBought are invalid"}
+
+#maps the column with the error code
+column_error_map={"A":"01",
+                  "B":"02",
+                  "C":"03",
+                  "D":"04",
+                   "E":"05",
+                   "F":"06",
+                   "G":"07",
+                   "H":"08",
+                   "I":"09",
+                   "J":"10",
+                   "K":"11",
+                   "L":"12",
+                   "M":"13",
+                   "N":"14",
+                   "O":"15",
+                   "P":"16"
+                }
 
 #the columns of a row that we are interested in
 #These correspond to excel sheet column letters
@@ -42,7 +78,7 @@ def correct_mark_format(cell_value):
 	#know what to do. I am simply returning
   #the error code
 	if len(separate_list) <= 2:
-		return "01"
+		return "031"
 
 	#get the factory number
 	factory_num = separate_list[2]
@@ -68,22 +104,31 @@ def process_datum(cell_value):
     Proceccess the Datum column to produce an ISODate
     and Season
     """
-    if cell_value==None:
-		    return "02"
+    if cell_value==None or cell_value=="":
+		    return "15"
 
-    value = str(cell_value.value.date())
+    value = str(cell_value.date())
     value_list = value.split('-')
     year =  value_list[0]
     month = value_list[1]
     day = value_list[2]
     yearint = int(year)
-    yearprev = yearint-1
 
-    return (str(day)+'-'+months[str(month)]+'-'+str(year),str(yearprev)+'-'+str(year))
+    #which month this is
+    if month == '10' or month == '11' or month == '12':
+        #season starts in October so it is this year plus 1
+        yearnext = yearint+1
+        return (str(year)+'-'+str(month)+'-'+str(day),str(year)+'-'+str(yearnext))
+    else:
+        #then it is this year minus 1
+        yearprev = yearint-1
+        return (str(year)+'-'+str(month)+'-'+str(day),str(yearprev)+'-'+str(year))
 
 def correct_output_csv_file(csv_file_name):
     """
-    Sets the name of the output CSV file
+    Sets the name of the output CSV file.
+    TODO: Maybe we would like a regular expression
+     for this function
     """
     if csv_file_name =="" or csv_file_name==None:
         now = datetime.datetime.now()
@@ -92,7 +137,17 @@ def correct_output_csv_file(csv_file_name):
 
     #replace any blanks
     csv_file_name = csv_file_name.replace(" ","_")
-    return csv_file_name
+
+    #try to find the pattern .csv at the end of the string
+    # if it does not exist append it at the end
+    filename,file_extension = os.path.splitext(csv_file_name)
+
+    if file_extension == '.csv':
+        return csv_file_name
+
+    #otherwise simply keep the file name
+    #and add the extension
+    return filename+'.csv'
 
 
 def write_error_output(filename,errors):
@@ -153,41 +208,49 @@ def cleanup(excel_in_filename,csv_out_filename):
 
         for row in range(2,sheet.max_row):
             row_vals=[]
-            weightBought=0.0
-            price = 0.0
+            weightBought=None
+            price = None
             for col in interestCols:
                 cell = "{}{}".format(col,row)
 
                 if col == 'C': #this is the marks column
                     cell_value = correct_mark_format(sheet[cell].value)
-                    if cell_value == "01":
+                    if cell_value == "031":
                         failed_rows.append((row,error_map["01"]))
                     else:
                         for val in cell_value:
                             row_vals.append(val)
                 elif col=='O':
-                    values = process_datum(sheet[cell])
-                    if values == "02":
-                        failed_rows.append((row,error_map["02"]))
+                    values = process_datum(sheet[cell].value)
+                    if values == column_error_map[col]:
+                        failed_rows.append((row,error_map[column_error_map[col]]))
                     else:
                         for val in values:
                             row_vals.append(val)
-
                 elif col=='I':
 
-                    #cache the weight bought for value calculation
-                    weightBought = float(sheet[cell].value)
-                    row_vals.append(sheet[cell].value)
+                    if sheet[cell].value == None or sheet[cell].value == "":
+                        failed_rows.append((row,error_map[column_error_map[col]]))
+                    else:
+                        #cache the weight bought for value calculation
+                        weightBought = float(sheet[cell].value)
+                        row_vals.append(sheet[cell].value)
                 elif col=='K':
-                    #cache the price for value calculation
-                    price = float(sheet[cell].value)
-                    row_vals.append(sheet[cell].value)
+                    if sheet[cell].value == None or sheet[cell].value == "":
+                        failed_rows.append((row,error_map[column_error_map[col]]))
+                    else:
+                        #cache the price for value calculation
+                        price = float(sheet[cell].value)
+                        row_vals.append(sheet[cell].value)
                 else:
                     row_vals.append(sheet[cell].value)
 
-            #we processed the sheet let's calculate the value
-            value = (weightBought/50.)*price
-            row_vals.append(value)
+            if price != None and weightBought != None:
+                #we processed the sheet let's calculate the value
+                value = (weightBought/50.)*price
+                row_vals.append(value)
+            else:
+                failed_rows.append((row,error_map["17"]))
 
             #make a tuple from the list values
             row_vals = tuple(row_vals)
