@@ -5,11 +5,28 @@ import csv
 
 NoneString=""
 
+#the columns of a row that we are interested in
+#These correspond to excel sheet column letters
+#
+#Field-Column map
+#A=Transanr,        B=Lotnr,        C=Marks,
+#D=Grade,           E=Bags,         F=Weight,
+#G=Saleno,          H=BagsBought    I=WeightBought
+#J=BuyerCode,       K=Price,        L=SeatNr,
+#M=AUTCODE,         N=Status,       O=Datum,        P=TijD
+
+#column names over which the script loops
+#to extract data
+interestCols='ABCDEFGHIJKLMNO'
+
 #map for the months
 months={'01':'Jan','02':'Feb','03':'Mar',
         '04':'Apr','05':'May','06':'June',
         '07':'July','08':'Aug','09':'Sept',
         '10':'Oct','11':'Nov','12':'Dec'}
+
+
+
 
 #map for the error codes with explanation
 error_map={"01":"Missing TRANSANR column value",
@@ -49,18 +66,6 @@ column_error_map={"A":"01",
                    "O":"15",
                    "P":"16"
                 }
-
-#the columns of a row that we are interested in
-#These correspond to excel sheet column letters
-#
-#Field-Column map
-#A=Transanr,        B=Lotnr,        C=Marks,
-#D=Grade,           E=Bags,         F=Weight,
-#G=Saleno,          H=BagsBought    I=WeightBought
-#J=BuyerCode,       K=Price,        L=SeatNr,
-#M=AUTCODE,         N=Status,       O=Datum,        P=TijD
-
-interestCols='ABCDEFGHIJKLMNO'
 
 def correct_mark_format(cell_value):
 
@@ -211,7 +216,7 @@ def cleanup(excel_in_filename,csv_out_filename):
         #an array that indicates if a row
         #failed or not
         failed_row=[False for x in range(0,sheet.max_row)]
-        
+
         for row in range(2,sheet.max_row):
             row_vals=[]
             weightBought=None

@@ -63,10 +63,9 @@ class TestCleanUp(unittest.TestCase):
         """
         Test: tests the clean up method.
         The excel sheet is TransactionListingSale30.xlsx
-        it should output
+        it should output 68 failed rows
         """
         rslt = cleanup('TransactionListingSale30.xlsx','test-output-I.csv')
-        #with this input we should be getting 68 failed rows
         self.assertEqual(68,len(rslt))
 
 if __name__ == '__main__':
