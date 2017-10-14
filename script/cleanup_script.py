@@ -203,9 +203,15 @@ def cleanup(excel_in_filename,csv_out_filename):
                             'BAGSNR','WEIGHT-Kgr','SALENO','BAGSBOUGHTNR','WEIGHTBOUGHT-Kgr',
                             'BUYERCODE','PRICE','SEATNR','AUCTCODE','STATUS','ISODATE', 'SEASON','VALUE'))
 
+        print("\tProcessing %d rows: "%sheet.max_row)
+
         #array holding the failed rows
         failed_rows=[]
 
+        #an array that indicates if a row
+        #failed or not
+        failed_row=[False for x in range(0,sheet.max_row)]
+        
         for row in range(2,sheet.max_row):
             row_vals=[]
             weightBought=None
@@ -216,7 +222,8 @@ def cleanup(excel_in_filename,csv_out_filename):
                 if col == 'C': #this is the marks column
                     cell_value = correct_mark_format(sheet[cell].value)
                     if cell_value == "031":
-                        failed_rows.append((row,error_map["01"]))
+                        failed_rows.append((row,error_map["031"]))
+                        failed_row[row]=True
                     else:
                         for val in cell_value:
                             row_vals.append(val)
@@ -224,6 +231,7 @@ def cleanup(excel_in_filename,csv_out_filename):
                     values = process_datum(sheet[cell].value)
                     if values == column_error_map[col]:
                         failed_rows.append((row,error_map[column_error_map[col]]))
+                        failed_row[row]=True
                     else:
                         for val in values:
                             row_vals.append(val)
@@ -231,6 +239,7 @@ def cleanup(excel_in_filename,csv_out_filename):
 
                     if sheet[cell].value == None or sheet[cell].value == "":
                         failed_rows.append((row,error_map[column_error_map[col]]))
+                        failed_row[row]=True
                     else:
                         #cache the weight bought for value calculation
                         weightBought = float(sheet[cell].value)
@@ -238,6 +247,7 @@ def cleanup(excel_in_filename,csv_out_filename):
                 elif col=='K':
                     if sheet[cell].value == None or sheet[cell].value == "":
                         failed_rows.append((row,error_map[column_error_map[col]]))
+                        failed_row[row]=True
                     else:
                         #cache the price for value calculation
                         price = float(sheet[cell].value)
@@ -251,12 +261,16 @@ def cleanup(excel_in_filename,csv_out_filename):
                 row_vals.append(value)
             else:
                 failed_rows.append((row,error_map["17"]))
-
-            #make a tuple from the list values
-            row_vals = tuple(row_vals)
+                failed_row[row]=True
 
             #let's write the row in the specified
-            csvwriter.writerow(row_vals)
+            #we only write if the row has not failed
+            #in one way or another
+            if failed_row[row]==False:
+                #make a tuple from the list values
+                row_vals = tuple(row_vals)
+                csvwriter.writerow(row_vals)
+
         return failed_rows
     except FileNotFoundError:
         print("File "+excel_in_filename+" does not exist")

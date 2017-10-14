@@ -66,12 +66,8 @@ class TestCleanUp(unittest.TestCase):
         it should output
         """
         rslt = cleanup('TransactionListingSale30.xlsx','test-output-I.csv')
-        self.fail("Finish the test")
-
-
-
-
-
+        #with this input we should be getting 68 failed rows
+        self.assertEqual(68,len(rslt))
 
 if __name__ == '__main__':
     unittest.main()
